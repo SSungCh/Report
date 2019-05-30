@@ -1,0 +1,122 @@
+function  [sens] = watertank(floor,height,Alg,optionmode,P,I,D)
+a=arduino('COM14','Due');
+    tic
+    i  = 0;
+    j  = 1;
+    integral=[0];
+    stack=[];
+    last_error=0;
+        while(toc<1000)
+        i = i + 1;
+        if j==1
+            height = 7;
+            j=j+1;
+        elseif j == 180
+            height = 13;
+            j=j+1;
+        elseif j == 360
+            height = 17;
+            j=j+1;
+        elseif j > 540
+            j=0;
+        else
+            j=j+1;
+        end
+        sensor=(height*0.0400+0.1015);
+        sensor2=(height*0.0539-0.2799);
+        
+        mpx1 = readVoltage(a,'A0');
+        mpx2 = readVoltage(a,'A1');
+        sens2 = -(mpx1-mpx2);
+        sens = readVoltage(a,'A2')
+        if Alg == 0
+            if floor == 2
+                if optionmode == 1
+              [pwm,integral,last_error]=makepwm2(sensor,sens,integral,last_error,P,I,D);
+                else
+                [pwm,integral,last_error]=makepwm(sensor,sens,integral,last_error);
+                end
+                    
+             elseif floor == 1 
+                 if optionmode == 1
+                     [pwm,integral,last_error]=makepwm2(sensor2,sens2,integral,last_error,P,I,D);
+                 else
+              [pwm,integral,last_error]=makepwm2(sensor2,sens2,integral,last_error);
+                 end
+            else
+             disp('입력다시해라');          
+            end
+          output=[pwm, sens];
+           stack=[stack; output]
+          writeDigitalPin(a,'D12',1);
+           writePWMDutyCycle(a,'D13',pwm);
+           figure(1)
+          c(i)=toc;
+           d(i)=pwm;
+          subplot(3,1,1);
+        
+           plot(c,d,'r');
+          grid
+         yticks(0: 0.1 :1)
+         ylim([0 1]) 
+         xlabel('Time X') % x-axis label   
+         ylabel('PWM Y') % y-axis label
+         title('PWM/Time Graph') ;
+        
+          v(i)=((sens-0.1015)/0.0400);
+          subplot(3,1,2);
+        
+                     if floor == 2
+                             plot(c,v,'r','color','c');
+                           h1 = annotation('line');
+                          h1.Parent = gca; 
+                            h1.X=[0 c(i)];
+                            h1.Y=[height height];
+                             grid
+                        xlabel('Time X') % x-axis label   
+                        ylabel('2층 높이 Y') % y-axis label
+                        yticks(0:2:25)
+                       ylim([0 25])        
+                        title('Height/Time Graph') ;
+                            elseif floor == 1 
+                             plot(c,v,'r');
+                             grid
+                        xlabel('Time X') % x-axis label   
+                        ylabel('2층 높이 Y') % y-axis label
+                        yticks(0:2:25)
+                        ylim([0 25])
+                        title('Height/Time Graph') ;
+                        end
+
+                        y(i)=((sens2+0.2799)/(0.0539));
+                        subplot(3,1,3);
+                         if floor == 2
+                             plot(c,y,'r');             
+                             grid
+                        xlabel('Time X') % x-axis label   
+                        ylabel('1층 높이 Y') % y-axis label
+                        yticks(0:2:25)
+                        ylim([0 25])
+                        title('Height/Time Graph') ; 
+
+                        elseif floor == 1                   
+                            plot(c,y,'r','color','c');
+                            h1 = annotation('line');
+                             h1.Parent = gca; 
+                             h1.X=[0 c(i)];
+                             h1.Y=[height height];
+                        grid
+                       xlabel('Time X') % x-axis label   
+                        ylabel('1층 높이 Y') % y-axis label
+                        yticks(0:2:25)
+                        ylim([0 25])
+                        title('Height/Time Graph') ; 
+                         end
+        else
+            disp('Alg다시해라'); 
+        end    
+        end       
+               
+        save('test.mat', 'stack')
+end
+          

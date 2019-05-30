@@ -1,0 +1,269 @@
+
+
+#include <errno.h>
+#include <fcntl.h>
+#include <tinyara/gpio.h>
+#include <tinyara/pwm.h>
+#include <tinyara/analog/adc.h>
+#include <tinyara/analog/ioctl.h>
+
+
+static void gpio_write(int port, int value)
+{
+	char str[4];
+	static char devpath[16];
+	snprintf(devpath, 16, "/dev/gpio%d", port);
+	int fd = open(devpath, O_RDWR);
+	if (fd < 0) {
+		printf("fd open fail\n");
+		return;
+	}
+
+	ioctl(fd, GPIOIOC_SET_DIRECTION, GPIO_DIRECTION_OUT);
+	if (write(fd, str, snprintf(str, 4, "%d", value != 0) + 1) < 0) {
+		printf("write error\n");
+		return;
+	}
+
+	close(fd);
+}
+void zero()
+{
+	 gpio_write(39, 0);
+	 gpio_write(38, 0);
+	 gpio_write(41, 0);
+	 gpio_write(30, 0);
+	 gpio_write(31, 0);
+	 gpio_write(40, 1);
+	 gpio_write(37, 0);
+}
+void one()
+{
+	 gpio_write(39, 1);
+	 gpio_write(38, 1);
+	 gpio_write(41, 0);
+	 gpio_write(30, 0);
+	 gpio_write(31, 1);
+	 gpio_write(40, 1);
+	 gpio_write(37, 1);
+}
+void two()
+{
+	 gpio_write(39, 0);
+	 gpio_write(38, 1);
+	 gpio_write(41, 0);
+	 gpio_write(30, 1);
+	 gpio_write(31, 0);
+	 gpio_write(40, 0);
+	 gpio_write(37, 0);
+}
+void three()
+{
+	 gpio_write(39, 0);
+	 gpio_write(38, 1);
+	 gpio_write(41, 0);
+	 gpio_write(30, 0);
+	 gpio_write(31, 0);
+	 gpio_write(40, 0);
+	 gpio_write(37, 1);
+}
+void four()
+{
+	 gpio_write(39, 1);
+	 gpio_write(38, 0);
+	 gpio_write(41, 0);
+	 gpio_write(30, 0);
+	 gpio_write(31, 1);
+	 gpio_write(40, 0);
+	 gpio_write(37, 1);
+}
+void five()
+{
+	 gpio_write(39, 0);
+	 gpio_write(38, 0);
+	 gpio_write(41, 1);
+	 gpio_write(30, 0);
+	 gpio_write(31, 0);
+	 gpio_write(40, 0);
+	 gpio_write(37, 1);
+}
+void reset()
+{
+	 gpio_write(39, 1);
+	 gpio_write(38, 1);
+	 gpio_write(41, 1);
+	 gpio_write(30, 1);
+	 gpio_write(31, 1);
+	 gpio_write(40, 1);
+	 gpio_write(37, 1);
+	 gpio_write(32, 0);
+}
+typedef struct {
+double Error;
+double last_error;
+double integral;
+double derivative;
+}PID;
+int makepwm(double height,int sens,PID *f)
+{
+	f->Error = height-sens;
+	f->integral = f->integral + f->Error;
+	f->derivative = f->Error - f->last_error;
+	int pwm = (((((0.8*f->Error)+(0.8*f->integral)+(3*f->derivative))/2000)*65536));
+	if(pwm>65500) {
+		pwm=65500;
+	}
+	if(pwm < 0) {
+		pwm =0;
+	}
+	f->last_error = f->Error;
+	printf("Error : %f integral : %f, derivative : %f,last_error : %f pwm : %d\n ",f->Error,f->integral,f->derivative,f->last_error,pwm);
+	return pwm;
+
+}
+
+void watertank_main(int argc, char *argv[])
+{
+	int fd1,fd2, ret;
+
+	struct adc_msg_s sample;
+	struct pwm_info_s pwm_info;
+	ssize_t nbytes;
+	size_t readsize;
+
+	fd1 = open("/dev/pwm0", O_RDWR);
+	if (fd1 < 0) {
+		printf("fd open fail\n");
+		return;
+	}
+	fd2 = open("/dev/adc0", O_RDONLY);
+		if (fd2 < 0) {
+			printf("%s: open failed: %d\n", __func__, errno);
+			return;
+	}
+	/////// 기본 설정 //////////////////////
+	pwm_info.frequency = 1000;
+	int j=0;
+	int height=50;
+	int floor = 2;
+	int sens=0;
+	PID *F;
+	F->Error =0;
+	F->derivative = 0;
+	F->integral =0;
+	F->last_error =0;
+	gpio_write(51, 1);
+	for (;;) {
+		ret = ioctl(fd2, ANIOC_TRIGGER, 0);
+
+		readsize = sizeof(struct adc_msg_s);
+		nbytes = read(fd2,&sample, readsize);
+		j=j+1;
+		if (j>300){
+			height=80;
+			floor=1;
+		}
+		if (j>600){
+			height=110;
+			floor=2;
+		}
+		if (j>900){
+			height=130;
+			floor=1;
+				}
+		if (j>1200){
+			height=150;
+			floor=2;
+				}
+		if (j>1500){
+			height=180;
+			floor=1;
+			j=0;
+		}
+		if(floor == 2 ){
+			gpio_write(52, 1);
+			gpio_write(53, 0);
+			printf("--------------floor 2----------\n");
+		int nsamples = sizeof(struct adc_msg_s);
+		if(sample.am_channel == 0){
+			sens=((double)sample.am_data-267.09)/4.37;
+			int pwm=makepwm(height,sens,F);
+
+					printf("sens= %d\n",sens);
+
+
+					if(sens<25 && sens > -25){
+						zero();
+					}
+					if(sens < 65 && sens >25){
+						one();
+					}
+					if(sens < 125 && sens >65){
+						two();
+					}
+					if(sens < 145 && sens >125){
+						three();
+					}
+					if(sens < 165 && sens > 145){
+						four();
+					}
+					if(sens >165){
+						five();
+					}
+
+					up_mdelay(500);
+					pwm_info.duty =pwm;
+					ioctl(fd1, PWMIOC_SETCHARACTERISTICS, (unsigned long)((uintptr_t)&pwm_info));
+					ioctl(fd1, PWMIOC_START);
+
+					}
+		}
+
+		if(floor == 1){
+			printf("--------------floor 1----------\n");
+			gpio_write(53, 1);
+			gpio_write(52, 0);
+
+		int nsamples = sizeof(struct adc_msg_s);
+		if(sample.am_channel == 1){
+			sens=((double)sample.am_data-167)/5.064;
+			int pwm=makepwm(height,sens,F);
+
+
+					printf("sens= %d\n",sens);
+
+
+					if(sens<25 && sens > -25){
+						zero();
+					}
+					if(sens < 65 && sens >25){
+						one();
+					}
+					if(sens < 125 && sens >65){
+						two();
+					}
+					if(sens < 145 && sens >125){
+						three();
+					}
+					if(sens < 165 && sens > 145){
+						four();
+					}
+					if(sens >165){
+						five();
+					}
+
+					up_mdelay(500);
+					pwm_info.duty =pwm;
+					ioctl(fd1, PWMIOC_SETCHARACTERISTICS, (unsigned long)((uintptr_t)&pwm_info));
+					ioctl(fd1, PWMIOC_START);
+
+					}
+			}
+	}
+
+		ioctl(fd1, PWMIOC_STOP);
+		close(fd1);
+		close(fd2);
+		gpio_write(51, 0);
+
+}
